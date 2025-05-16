@@ -1,0 +1,263 @@
+import { test as base, expect } from "@playwright/test";
+import { LoginPage } from "../pages/login";
+import { DashboardPage } from "../pages/dashboard";
+import { CommunityPage } from "../pages/community";
+import { StaffDirectoryPage } from "../pages/staffDirectory";
+import { DepartmentPage } from "../pages/department";
+import { AdminSettings } from "../pages/adminSetting";
+import { RegisterPage } from "../pages/register";
+import { ProfilePage } from "../pages/profile";
+import { Posting } from "../pages/components/posting";
+
+import { users } from "../data/users";
+type UserRole = keyof typeof users;
+
+type JomlaFixture = {
+  normalUserContext: { context: any; page: any };
+  superAdminContext: { context: any; page: any };
+  loginPage: LoginPage;
+  loginAs: (role: UserRole) => Promise<void>;
+  loginAsNew: (role: UserRole) => Promise<void>;
+  dashboardPage: DashboardPage;
+  communityNormalUserPage: CommunityPage;
+  communitySuperAdminPage: CommunityPage;
+  staffDirectoryPage: StaffDirectoryPage;
+  departmentPage: DepartmentPage;
+  superAdminSettingsPage: AdminSettings;
+  profilePage: ProfilePage;
+  posting: Posting;
+
+  registerPage: RegisterPage;
+};
+
+export const test = base.extend<JomlaFixture>({
+  normalUserContext: async ({ browser }, use) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    const loginPage = new LoginPage(page);
+    await loginPage.navigateToAndVisible();
+    await loginPage.startLogin(users.testAccount.email, users.testAccount.password);
+
+    await use({ context, page });
+    // await context.close();
+  },
+
+  superAdminContext: async ({ browser }, use) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    const loginPage = new LoginPage(page);
+    await loginPage.navigateToAndVisible();
+    await loginPage.startLogin(users.admin.email, users.admin.password);
+
+    await use({ context, page });
+    // await context.close();
+  },
+
+
+  // TODO: Check if this fixture is still needed or we can use 
+  // above user context fully
+  loginAs: async ({ page }, use) => {
+    await use(async (role: UserRole) => {
+      const user = users[role];
+
+      if (!user) {
+        throw new Error("Invalid account");
+      }
+
+      const loginPage = new LoginPage(page);
+      await loginPage.navigateToAndVisible();
+      await loginPage.startLogin(user.email, user.password);
+      console.log("PASSED: LOGIN");
+    });
+  },
+
+  loginAsNew: async ({ page }, use) => {
+    await use(async (role: UserRole) => {
+      const user = users[role];
+
+      if (!user) {
+        throw new Error("Invalid account");
+      }
+
+      const loginPage = new LoginPage(page);
+      await loginPage.startNewLogin(user.email, user.password);
+    });
+  },
+
+  dashboardPage: async ({ page }, use) => {
+    const dashboardPage = new DashboardPage(page);
+    await use(dashboardPage);
+  },
+
+  // browser context yawww
+  communityNormalUserPage: async ({ normalUserContext }, use) => {
+    const communityPage = new CommunityPage(normalUserContext.page);
+
+    // this is for dashboard -> clicking into related url
+    const dashboardPage = new DashboardPage(normalUserContext.page);
+    await dashboardPage.communityPageCanBeClick("excommunicado");
+
+    await use(communityPage);
+  },
+
+  staffDirectoryPage: async ({ page }, use) => {
+    const staffDirectoryPage = new StaffDirectoryPage(page);
+    await use(staffDirectoryPage);
+  },
+
+  departmentPage: async ({ page }, use) => {
+    const departmentPage = new DepartmentPage(page);
+
+    const loginPage = new LoginPage(page);
+    await loginPage.navigateToAndVisible();
+    await loginPage.startLogin(users.testAccount.email, users.testAccount.password);
+
+    const dashboardPage = new DashboardPage(page);
+    await dashboardPage.departmentPageCanBeClick("new department");
+
+    await use(departmentPage);
+  },
+
+  superAdminSettingsPage: async ({ superAdminContext }, use) => {
+    const adminSetting = new AdminSettings(superAdminContext.page);
+    const dashboardPage = new DashboardPage(superAdminContext.page);
+    await dashboardPage.settingsPageCanBeClick("admin");
+    await use(adminSetting);
+  },
+
+  registerPage: async ({ page }, use) => {
+    const registerPage = new RegisterPage(page);
+    await use(registerPage);
+  },
+
+  loginPage: async ({ page }, use) => {
+    const loginPage = new LoginPage(page);
+    await use(loginPage);
+  },
+
+  // this will be use by rahimi-qa
+  profilePage: async ({ page }, use) => {
+    const profilePage = new ProfilePage(page);
+    const loginPage = new LoginPage(page);
+    await loginPage.navigateToAndVisible();
+    await loginPage.startLogin(users.admin.email, users.admin.password);
+
+    await use(profilePage);
+  },
+
+  posting: async ({ page }, use) => {
+    const posting = new Posting(page);
+    const loginPage = new LoginPage(page);
+    await loginPage.navigateToAndVisible();
+    await loginPage.startLogin(users.admin.email, users.admin.password);
+
+    await use(posting);
+  }
+
+});
+
+export { expect };
+
+--------------------------------------------------------------- Pages
+
+import { expect, type Locator, type Page } from "@playwright/test";
+import { DashboardPage } from "./dashboard";
+import { StaffDirectoryPage } from "./staffDirectory";
+
+export class ProfilePage {
+    readonly page: Page;
+    dashboardPage: DashboardPage;
+    staffDir: StaffDirectoryPage;
+
+    cropBtn: Locator;
+    saveBtn: Locator;
+
+    constructor(page: Page) {
+        this.page = page;
+        this.dashboardPage = new DashboardPage(page);
+        this.staffDir = new StaffDirectoryPage(page);
+
+        this.cropBtn = this.page.getByRole('button', { name: 'Crop' });
+        this.saveBtn = this.page.getByRole('button', { name: 'Save' });
+    };
+
+
+    async navigateTo() {
+        await this.dashboardPage.profileBtn.click();
+        await this.dashboardPage.ownProfile.click();
+    };
+
+    private imgEditBtn(profileName: string) {
+        return this.page.getByRole('img', { name: new RegExp(`^${profileName}'s profile picture$`) });
+    };
+
+    async changeProfilePicture() {
+        const beforeEditSrc = await this.imgEditBtn("fakeUser69").getAttribute('src');
+        console.log(beforeEditSrc);
+        await this.imgEditBtn("fakeUser69").click();
+
+        const [fileChooser] = await Promise.all([
+            this.page.waitForEvent('filechooser'),
+            this.page.getByText('Choose photo from gallery').click()
+        ]);
+
+        await fileChooser.setFiles('data/pictures/profilePicture.png');
+
+        await this.cropBtn.click();
+        await this.saveBtn.click();
+
+        const afterEditSrc = await this.imgEditBtn("fakeUser69").getAttribute('src');
+        console.log(afterEditSrc);
+
+        console.log("Profile picture changed successfully");
+    };
+
+    // change date of birth and whatsapp number
+    // format of dob: yyyy-mm-dd
+    // format of whatsapp number: +60 11-1111-1111
+    // changing staff photo will sent a request to the super admin
+    async changeBioInformation(dob: string, whatsappNumber: string) {
+        await this.page.locator('section').filter({ hasText: 'Bio InformationStaff’s photo?' }).getByRole('button').click();
+
+        const [fileChooser] = await Promise.all([
+            this.page.waitForEvent('filechooser'),
+            this.page.locator('input[type="file"]').click()
+        ]);
+
+        await fileChooser.setFiles('data/pictures/staffPhoto.jpg');
+        await this.cropBtn.click();
+        await this.saveBtn.nth(1).click();
+
+        await this.page.getByPlaceholder('Date of Birth').fill(dob);
+        await this.page.getByRole('textbox', { name: '1 (702) 123-' }).fill(whatsappNumber);
+        await this.page.getByRole('button', { name: 'Save' }).click();
+
+        await expect(this.page.getByRole('alert')).toBeVisible();
+    };
+
+    async changeDepartmentInfo() {
+
+        // navigation
+        await this.navigateTo();
+        await this.dashboardPage.staffDirectory.click();
+        await this.staffDir.clickOnMemberName("fakeuser69");
+
+        // editing data
+        await this.page.getByRole('button', { name: 'Edit Icon' }).nth(1).click();
+
+        // await this.page.locator('select[name="unit"]').selectOption('594');
+        await this.page.locator('select[name="unit"]').click();
+        await this.page.locator('select[name="jobtitle"]').selectOption('6');
+        await this.page.locator('select[name="position"]').selectOption('Tetap');
+        await this.page.locator('select[name="grade"]').selectOption('116');
+        await this.page.locator('select[name="subgrade"]').selectOption('(KUP) (Memangku)');
+        await this.page.locator('select[name="report_to"]').selectOption('');
+
+        await this.page.getByRole('button', { name: 'Save' }).click();
+        await expect(this.page.getByRole('alert')).toBeVisible();
+
+    };
+
+};
